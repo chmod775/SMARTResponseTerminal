@@ -4,7 +4,7 @@
 
 // Select the timers you're using, here ITimer1
 #define USE_TIMER_1     true
-#define USE_TIMER_2     false
+#define USE_TIMER_2     true
 #define USE_TIMER_3     false
 #define USE_TIMER_4     false
 #define USE_TIMER_5     false
@@ -14,7 +14,7 @@
 int row;
 int col;
 int scrollRow;
-char buf[20][70];
+char buf[17][70];
 char draw[5];
 char incomingByte = 0; // for incoming serial data
 void setup()
@@ -29,39 +29,50 @@ void setup()
   SRXEScrollArea(0, 136, 24); // Visible screen area
 
   SRXEWriteString(0, 0, "Pocket terminal by Michele Trombetta", FONT_NORMAL, 3, 0);
+  SRXEWriteString(0, 9, "      www.github.com/chmod775       ", FONT_NORMAL, 3, 0);
 
-  row = 1;
+  row = 2;
   col = 0;
   scrollRow = 0;
+  
   // Init timer ITimer1
   ITimer1.init();
-  ITimer1.attachInterrupt(1000, TimerHandler);
+  ITimer1.attachInterrupt(1000, KeyBoard_Handler);
+  // Init timer ITimer2
+  //ITimer2.init();
+  //ITimer2.attachInterrupt(2, Cursor_Handler);
 }
 
+void loop() {}
+
+/* ##### SERIAL MANAGEMENT ##### */
 void serialEvent1() {
    if (Serial1.available() > 0) {
-    // read the incoming byte:
     incomingByte = Serial1.read();
     PutChar(incomingByte);
   } 
 }
 
-void loop() {
-
+char Serial1_BlockingRead(){
+  while(!Serial1.available());
+  return Serial1.read();
 }
+/* ############################# */
 
-// sudo su -c '/sbin/getty -L ttyUSB0'
+/* ##### KEYBOARD + CURSOR MANAGEMENT ##### */
 byte cursorVisible = 0;
 byte typing = 0;
-void TimerHandler()
-{
-  /*
+int CursorHandler_Cnt = 0;
+
+void Cursor_Handler() {
   if (!typing) {
     cursorVisible = cursorVisible > 0 ? 0 : 1;
     DrawCursor(cursorVisible);
   }
   typing = false;
-  */
+}
+
+void KeyBoard_Handler() {
   int key = SRXEGetKey();
   if (key) {
     if ((key >= 0xe0) && (key <= 0xef)) {
@@ -85,39 +96,49 @@ void TimerHandler()
     else
       Serial1.write(key);
   }
+
+  CursorHandler_Cnt++;
+  if (CursorHandler_Cnt >= 500) {
+    CursorHandler_Cnt = 0;
+    Cursor_Handler();
+  }
 }
 
 void DrawCursor(bool visible) {
   cursorVisible = visible;
   if (visible) {
-    SRXEVerticalLine(6 * col, 8 * row, 8, 3);
+    SRXEVerticalLine(6 * col, 8 * ((row + scrollRow) % 17), 8, 3);
   } else {
-    SRXEVerticalLine(6 * col, 8 * row, 8, 0);
-    draw[0] = buf[row][col];
-    draw[1] = 0x00;
-    SRXEWriteString(6 * col, 8 * row, draw, FONT_NORMAL, 3, 0);
+    int tRow = (row + scrollRow) % 17;
+    SRXEVerticalLine(6 * col, 8 * tRow, 8, 0);
+    SRXEWriteChar(6 * col, 8 * tRow, buf[tRow][col]);
   }
 }
+/* ############################################### */
 
+/* ##### TERMINAL EMULATOR ##### */
 void PutChar(char ch) {
-  typing = true;
+  if (cursorVisible) DrawCursor(false);
+  
   if (ch == '\n') { NewLine(); return; }
   if (ch == '\r') { CarriageReturn();  return; }
   if (ch == '\b') { Backspace();  return; }
   if (ch == '\t') { Tab();  return; }
-  if (ch == '\e') { handle_escape();  return; }
+  if (ch == '\e') { Escape();  return; }
 
-  //buf[row][col] = ch;
+  typing = true;
   
-  draw[0] = ch;
-  draw[1] = 0x00;
-  SRXEWriteString(6 * col, 8 * ((row + scrollRow) % 17), draw, FONT_SMALL, 3, 0);
+  int tRow = (row + scrollRow) % 17;
+
+  buf[tRow][col] = ch;
+
+  SRXEWriteChar(6 * col, 8 * tRow, ch);
 
   if (col < 70)
     col++;
 }
 
-void scrollup() {
+void ScrollUp() {
   scrollRow++;
   if (scrollRow >= 17) scrollRow = 0;
   
@@ -130,7 +151,7 @@ void scrollup() {
 void NewLine() {
   if (row >= 16) {
     row = 16;
-    scrollup();
+    ScrollUp();
   } else
     row++;
 }
@@ -154,14 +175,9 @@ void Clear() {
   row = 0;
 }
 
-char blocking_read(){
-  while(!Serial1.available());
-  return Serial1.read();
-}
-
 unsigned char c;
-void handle_escape(){
-  c = blocking_read();
+void Escape(){
+  c = Serial1_BlockingRead();
   byte x,y,val;
   if(c == 'D'){
     NewLine();
@@ -175,30 +191,30 @@ void handle_escape(){
     CarriageReturn();
   }
   if(c == '['){
-    c = blocking_read();
+    c = Serial1_BlockingRead();
     
     if (c == '[')
-      c = blocking_read();
+      c = Serial1_BlockingRead();
     
     val = 255;
     if(isdigit(c)){
       val = c - '0';
-      c = blocking_read();
+      c = Serial1_BlockingRead();
       if(isdigit(c)){
         val*=10;
         val+=c-'0';
-        c = blocking_read();
+        c = Serial1_BlockingRead();
       }
     }
     switch(c){
       case ';':
         int val2;
-        val2 = blocking_read() - '0';
-        c = blocking_read();
+        val2 = Serial1_BlockingRead() - '0';
+        c = Serial1_BlockingRead();
         if(isdigit(c)){
           val2 *= 10;
           val2 += c-'0';
-          c = blocking_read();
+          c = Serial1_BlockingRead();
         }
         if(c == 'f' || c == 'H'){
           row = val-1; col = val2-1;

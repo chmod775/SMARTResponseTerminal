@@ -704,6 +704,51 @@ void SRXERectangle(int x, int y, int cx, int cy, byte color, byte bFilled)
 } /* SRXERectangle() */
 
 
+int SRXEWriteChar(int x, int y, char ch) {
+  int i, j, iLen;
+  unsigned char ucTemp[8], *s;
+  byte fgColor0, fgColor1, fgColor2, bgColor;
+  
+  fgColor0 = 0xe0; fgColor1 = 0x1c; fgColor2 = 0x3;
+  bgColor = 0x00;
+  
+  int tx, ty;
+  byte bTemp[16], bMask, bOut, *d;
+  s = (unsigned char *)&ucSmallFont[(ch - 32) * 6];
+  memcpy_P(ucTemp, s, 6); // copy from FLASH memory
+  // convert from 1-bpp to 2/3-bpp
+  d = bTemp;
+  for (ty = 0; ty < 8; ty++)
+  {
+    bMask = 1 << ty;
+    for (tx = 0; tx < 6; tx += 3) // 2 sets of 3 pixels
+    {
+      bOut = bgColor;
+      if (ucTemp[tx] & bMask)
+      {
+        bOut &= 0x1f; // clear top 3 bits
+        bOut |= fgColor0; // first pixel (3 bits)
+      }
+      if (ucTemp[tx + 1] & bMask)
+      {
+        bOut &= 0xe3; // clear middle 3 bits
+        bOut |= fgColor1; // second pixel (3 bits)
+      }
+      if (ucTemp[tx + 2] & bMask)
+      {
+        bOut &= 0xfc; // clear lower 2 bits
+        bOut |= fgColor2; // third pixel (2 bits)
+      }
+      *d++ = bOut;
+    } // for tx
+  } // for ty
+  SRXESetPosition(x, y, 6, 8);
+  x += 6;
+  SRXEWriteDataBlock(bTemp, 16); // write character pattern
+
+  return 0;
+}
+
 //
 // Draw a string of normal (8x8), small (6x8) or large (16x24) characters
 // At the given col+row

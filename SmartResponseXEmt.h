@@ -109,6 +109,8 @@ void SRXERectangle(int x, int y, int cx, int cy, byte color, byte bFilled);
 // At the given col+row
 //
 int SRXEWriteString(int x, int y, char *szMsg, int iSize, int iFGColor, int iBGColor);
+int SRXEWriteChar(int x, int y, char ch);
+
 // Fill the frame buffer with a byte pattern
 // e.g. all off (0x00) or all on (0xff)
 void SRXEFill(byte ucData);
